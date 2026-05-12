@@ -12,17 +12,6 @@ echo -e "${B_Cyan}=======================================${NC}"
 echo -e "${B_Green}   ROBLOX MULTI-AUTOMATION LANDSCAPE   ${NC}"
 echo -e "${B_Cyan}=======================================${NC}"
 
-# --- CEK PERINTAH ROOT (FIX ERROR COMMAND NOT FOUND) ---
-if command -v tsudo &> /dev/null; then
-    SUDO="tsudo"
-elif command -v su &> /dev/null; then
-    SUDO="su -c"
-else
-    echo -e "${B_Red}[!] Perangkat kamu belum di-root atau tsu belum diinstall!${NC}"
-    echo -e "${B_Yellow}Silakan jalankan: pkg install tsu -y di Termux.${NC}"
-    exit 1
-fi
-
 # --- AUTO DETECT SEMUA PACKAGE ---
 echo -e "${B_Yellow}[1] Memindai semua clone com.roblox.clien*...${NC}"
 ALL_PACKAGES=($(pm list packages | grep -E "com.roblox.client|com.roblox.clien[a-z]" | cut -d ":" -f2 | sort))
@@ -77,34 +66,33 @@ rejoin_and_align() {
 
     echo -e "[$(date +%T)] ${B_Yellow}LAUNCHING${NC} - Membuka $PKG..."
     
-    # Force stop menggunakan dynamic root command
-    $SUDO am force-stop $PKG
+    # Memakai su -c langsung (Universal Root untuk Cloud Phone)
+    su -c am force-stop $PKG
     sleep 1
 
-    # Buka Roblox secara standar agar trigger rotasi landscape bawaan game
     if [ "$IS_PRIVATE" = true ]; then
-        $SUDO am start -a android.intent.action.VIEW -d "roblox://placeId=$GAME_ID&linkCode=$CODE" > /dev/null 2>&1
+        su -c am start -a android.intent.action.VIEW -d "roblox://placeId=$GAME_ID&linkCode=$CODE" > /dev/null 2>&1
     else
-        $SUDO am start -a android.intent.action.VIEW -d "roblox://placeId=$GAME_ID" > /dev/null 2>&1
+        su -c am start -a android.intent.action.VIEW -d "roblox://placeId=$GAME_ID" > /dev/null 2>&1
     fi
     
     sleep 4
 
-    # Ambil Task ID jendela
-    local TASK_ID=$($SUDO am stack list | grep -B 1 "$PKG" | grep "taskId=" | head -n 1 | grep -oP 'taskId=\K[0-9]+')
+    # Ambil Jendela Task ID via dumpsys standar Android 10
+    local TASK_ID=$(su -c dumpsys activity activities | grep -B 1 "$PKG" | grep "TaskRecord" | head -n 1 | grep -oP ' #\K[0-9]+')
     
     if [ -z "$TASK_ID" ]; then
-        TASK_ID=$($SUDO dumpsys activity activities | grep -B 1 "$PKG" | grep "TaskRecord" | head -n 1 | grep -oP ' #\K[0-9]+')
+        TASK_ID=$(su -c am stack list | grep -B 1 "$PKG" | grep "taskId=" | head -n 1 | grep -oP 'taskId=\K[0-9]+')
     fi
 
-    # Ubah ukuran dan jejerkan ke samping
+    # Eksekusi pengecilan window mendatar
     if [ ! -z "$TASK_ID" ]; then
         echo -e "[$(date +%T)] ${B_Green}MOVING${NC} - Menata Jendela (Task ID: $TASK_ID) ke posisi X:$POS_X"
-        $SUDO am stack move-task $TASK_ID 5 true > /dev/null 2>&1
-        $SUDO am resize-task $TASK_ID $POS_X $POS_Y $END_X $END_Y > /dev/null 2>&1
+        su -c am stack move-task $TASK_ID 5 true > /dev/null 2>&1
+        su -c am resize-task $TASK_ID $POS_X $POS_Y $END_X $END_Y > /dev/null 2>&1
     else
-        echo -e "[$(date +%T)] ${B_Red}WARNING${NC} - Gagal menata layout, mencoba metode langsung..."
-        $SUDO am start -n "$PKG/com.roblox.client.MainActivity" --windowingMode 5 --task-bounds "$POS_X,$POS_Y,$END_X,$END_Y" > /dev/null 2>&1
+        echo -e "[$(date +%T)] ${B_Red}LAUNCH METHOD 2${NC} - Mengatur ulang posisi..."
+        su -c am start -n "$PKG/com.roblox.client.MainActivity" --windowingMode 5 --task-bounds "$POS_X,$POS_Y,$END_X,$END_Y" > /dev/null 2>&1
     fi
 }
 
@@ -116,7 +104,7 @@ while true; do
     for idx in "${!TARGET_PACKAGES[@]}"; do
         CURRENT_PKG="${TARGET_PACKAGES[$idx]}"
         
-        IS_RUNNING=$($SUDO pidof $CURRENT_PKG)
+        IS_RUNNING=$(su -c pidof $CURRENT_PKG)
         
         if [ -z "$IS_RUNNING" ]; then
             rejoin_and_align "$CURRENT_PKG" "$idx"
@@ -125,3 +113,4 @@ while true; do
     done
     sleep 10
 done
+EOF
