@@ -9,29 +9,19 @@ NC='\033[0m'
 
 clear
 echo -e "${B_Cyan}=======================================${NC}"
-echo -e "${B_Green}   ROBLOX MULTI-AUTOMATION LANDSCAPE   ${NC}"
+echo -e "${B_Green}   ROBLOX AUTO-LAUNCHER V3 (LITE)      ${NC}"
 echo -e "${B_Cyan}=======================================${NC}"
 
 # --- AUTO DETECT SEMUA PACKAGE ---
 ALL_PACKAGES=($(pm list packages | grep -E "com.roblox.client|com.roblox.clien[a-z]" | cut -d ":" -f2 | sort))
 
 if [ ${#ALL_PACKAGES[@]} -eq 0 ]; then
-    echo -e "${B_Red}[!] Tidak ada aplikasi Roblox ditemukan!${NC}"
+    echo -e "${B_Red}[!] Aplikasi Roblox tidak ditemukan!${NC}"
     exit 1
 fi
 
 echo -e "Ditemukan ${#ALL_PACKAGES[@]} aplikasi."
-echo -e "1) Jalankan SEMUA sekaligus"
-echo -e "2) Pilih satu saja"
-read -p "Pilihan (1-2): " RUN_MODE
-
-TARGET_PACKAGES=()
-[[ "$RUN_MODE" == "1" ]] && TARGET_PACKAGES=("${ALL_PACKAGES[@]}") || {
-    echo -e "\nPilih nomor aplikasi:"
-    for i in "${!ALL_PACKAGES[@]}"; do echo -e "  $((i+1)) ${ALL_PACKAGES[$i]}"; done
-    read -p "Nomor: " CHOSEN
-    TARGET_PACKAGES=("${ALL_PACKAGES[$((CHOSEN-1))]}")
-}
+echo -e "Jalankan semua secara otomatis..."
 
 read -p "Masukkan Link Private Server (Kosongkan jika Publik): " PRIV_LINK
 if [[ -z "$PRIV_LINK" ]]; then
@@ -43,60 +33,56 @@ else
     IS_PRIVATE=true
 fi
 
-# --- PAKSA LANDSCAPE ---
+# --- SETTING LAYAR ---
+# Paksa landscape sekali saja di awal biar nggak berat
 su -c "settings put system accelerometer_rotation 0"
 su -c "settings put system user_rotation 1"
 
-# --- POSISI WINDOW ---
-WIDTH=520
-HEIGHT=360
-POS_Y=100
+# Ukuran Jendela
+WIDTH=500
+HEIGHT=350
+POS_Y=80
 
-rejoin_and_align() {
+rejoin() {
     local PKG=$1
     local INDEX=$2
-    local POS_X=$(( INDEX * 540 ))
+    local POS_X=$(( INDEX * 520 )) # Jarak antar jendela
     local END_X=$(( POS_X + WIDTH ))
     local END_Y=$(( POS_Y + HEIGHT ))
 
-    echo -e "[$(date +%T)] ${B_Yellow}LAUNCHING${NC} - $PKG..."
+    echo -e "[$(date +%T)] ${B_Yellow}STARTING${NC} - $PKG"
     
+    # Tutup aplikasi
     su -c "am force-stop $PKG"
     sleep 1
 
-    [[ "$IS_PRIVATE" == "true" ]] && D_LINK="roblox://placeId=$GAME_ID&linkCode=$CODE" || D_LINK="roblox://placeId=$GAME_ID"
-
-    # LANGKAH 1: Buka Fullscreen dulu biar PASTI MUNCUL
-    su -c "am start -a android.intent.action.VIEW -d '$D_LINK' $PKG" > /dev/null 2>&1
-    
-    # Tunggu 5 detik sampai aplikasi benar-benar nongol di layar
-    sleep 5
-
-    # LANGKAH 2: Cari ID Jendela (Task ID)
-    local TASK_ID=$(su -c "dumpsys activity activities | grep -B 1 $PKG | grep 'TaskRecord' | head -n 1 | grep -oP ' #\K[0-9]+'")
-    
-    if [ -z "$TASK_ID" ]; then
-        TASK_ID=$(su -c "am stack list | grep $PKG | grep -oP 'taskId=\K[0-9]+' | head -n 1")
-    fi
-
-    # LANGKAH 3: Paksa jadi melayang dan geser ke posisi X
-    if [ ! -z "$TASK_ID" ]; then
-        echo -e "[$(date +%T)] ${B_Green}FIXING WINDOW${NC} - Task ID: $TASK_ID ke X:$POS_X"
-        su -c "am stack move-task $TASK_ID 5 true" > /dev/null 2>&1
-        su -c "am resize-task $TASK_ID $POS_X $POS_Y $END_X $END_Y" > /dev/null 2>&1
+    # Tentukan Link
+    if [ "$IS_PRIVATE" = true ]; then
+        D_LINK="roblox://placeId=$GAME_ID&linkCode=$CODE"
     else
-        echo -e "${B_Red}[!] Gagal resize, mencoba paksa ulang...${NC}"
-        su -c "am start -n $PKG/com.roblox.client.MainActivity --windowingMode 5 --task-bounds $POS_X,$POS_Y,$END_X,$END_Y" > /dev/null 2>&1
+        D_LINK="roblox://placeId=$GAME_ID"
     fi
+
+    # PERINTAH UTAMA: Langsung buka dalam mode Freeform (Windowing Mode 5)
+    # Kita pakai 'am start-activity' agar lebih stabil di Android 10
+    su -c "am start -n $PKG/com.roblox.client.MainActivity -a android.intent.action.VIEW -d '$D_LINK' --windowingMode 5 --task-bounds $POS_X,$POS_Y,$END_X,$END_Y" > /dev/null 2>&1
+    
+    # Jeda 10 detik antar akun biar RAM nggak kaget/nge-freeze
+    sleep 10
 }
 
+# --- LOOP UTAMA ---
 while true; do
-    for idx in "${!TARGET_PACKAGES[@]}"; do
-        CURRENT_PKG="${TARGET_PACKAGES[$idx]}"
-        IS_RUNNING=$(su -c "pidof $CURRENT_PKG")
-        if [ -z "$IS_RUNNING" ]; then
-            rejoin_and_align "$CURRENT_PKG" "$idx"
+    for idx in "${!ALL_PACKAGES[@]}"; do
+        CURRENT_PKG="${ALL_PACKAGES[$idx]}"
+        
+        # Cek apakah sedang jalan (pakai cara paling ringan)
+        RUNNING=$(pgrep -f $CURRENT_PKG)
+        
+        if [ -z "$RUNNING" ]; then
+            rejoin "$CURRENT_PKG" "$idx"
         fi
     done
-    sleep 15
+    echo -ne "\r[*] Menunggu pengecekan ulang... "
+    sleep 20
 done
