@@ -51,62 +51,72 @@ else
     IS_PRIVATE=true
 fi
 
-# --- UKURAN JENDELA MODE LANDSCAPE ---
-WIDTH=500    # Ukuran lebar dibuat lebih besar agar proporsi landscape
-HEIGHT=360   # Tinggi diperkecil
-POS_Y=50     # Jarak dari atas layar
+# --- UKURAN JENDELA LANDSCAPE (Disesuaikan standar aman Cloud Phone) ---
+WIDTH=520    
+HEIGHT=360   
+POS_Y=100     
 
-# --- FUNGSI UTAMA REJOIN DAN STRUKTUR POSITIONING ---
 rejoin_and_align() {
     local PKG=$1
     local INDEX=$2
     
-    # KUNCI LAYAR KE LANDSCAPE (Memaksa sistem Android masuk mode horizontal)
-    # user_rotation 1 = Landscape standar (90 derajat miring)
-    tsudo wm set-user-rotation 1
-    sleep 0.5
-    
-    # HITUNG KOORDINAT OTOMATIS BERBARIS MENYAMPING DI MODE LANDSCAPE
-    # Setiap jendela bergeser ke kanan sebesar 520 pixel (Width + Jeda 20px)
-    local POS_X=$(( INDEX * 520 ))
+    # Hitung koordinat menyamping
+    local POS_X=$(( INDEX * 540 ))
     local END_X=$(( POS_X + WIDTH ))
     local END_Y=$(( POS_Y + HEIGHT ))
 
-    echo -e "[$(date +%T)] ${B_Red}OFFLINE${NC} - Menjalankan $PKG di posisi X:$POS_X (Locked Landscape)"
+    echo -e "[$(date +%T)] ${B_Yellow}LAUNCHING${NC} - Membuka $PKG..."
     
+    # 1. Matikan paksa agar fresh
     tsudo am force-stop $PKG
     sleep 1
 
-    # Memanggil Activity utama dalam format horizontal/landscape
+    # 2. CARA AMAN: Buka Roblox secara standar terlebih dahulu lewat Deep Link (Biar PASTI MUNCUL)
     if [ "$IS_PRIVATE" = true ]; then
-        tsudo am start -n "$PKG/com.roblox.client.MainActivity" \
-            -a android.intent.action.VIEW \
-            -d "roblox://placeId=$GAME_ID&linkCode=$CODE" \
-            --windowingMode 5 \
-            --task-bounds "$POS_X,$POS_Y,$END_X,$END_Y" > /dev/null 2>&1
+        tsudo am start -a android.intent.action.VIEW -d "roblox://placeId=$GAME_ID&linkCode=$CODE" > /dev/null 2>&1
     else
-        tsudo am start -n "$PKG/com.roblox.client.MainActivity" \
-            -a android.intent.action.VIEW \
-            -d "roblox://placeId=$GAME_ID" \
-            --windowingMode 5 \
-            --task-bounds "$POS_X,$POS_Y,$END_X,$END_Y" > /dev/null 2>&1
+        tsudo am start -a android.intent.action.VIEW -d "roblox://placeId=$GAME_ID" > /dev/null 2>&1
+    fi
+    
+    # Tunggu 3 detik sampai aplikasi benar-benar terinisiasi oleh sistem Android
+    sleep 3
+
+    # 3. AMBIL TASK ID: Mencari ID jendela Roblox yang baru saja terbuka
+    local TASK_ID=$(tsudo am stack list | grep -B 1 "$PKG" | grep "taskId=" | head -n 1 | grep -oP 'taskId=\K[0-9]+')
+    
+    if [ -z "$TASK_ID" ]; then
+        # Cek alternatif format dump stack Android 10 jika yang di atas kosong
+        TASK_ID=$(tsudo dumpsys activity activities | grep -B 1 "$PKG" | grep "TaskRecord" | head -n 1 | grep -oP ' #\K[0-9]+')
+    fi
+
+    # 4. RE-SIZE & RE-POSITION: Jika Task ID ketemu, paksa jendelanya mengecil dan berjejer
+    if [ ! -z "$TASK_ID" ]; then
+        echo -e "[$(date +%T)] ${B_Green}MOVING${NC} - Menata Jendela (Task ID: $TASK_ID) ke posisi X:$POS_X"
+        # Ubah mode jendela ke Freeform (mode 5)
+        tsudo am stack move-task $TASK_ID 5 true > /dev/null 2>&1
+        # Pasang posisi koordinat berjejer menyamping
+        tsudo am resize-task $TASK_ID $POS_X $POS_Y $END_X $END_Y > /dev/null 2>&1
+    else
+        echo -e "[$(date +%T)] ${B_Red}WARNING${NC} - Gagal mendapatkan ID jendela. Mencoba metode alternatif..."
+        # Metode cadangan langsung timpa panggil activity
+        tsudo am start -n "$PKG/com.roblox.client.MainActivity" --windowingMode 5 --task-bounds "$POS_X,$POS_Y,$END_X,$END_Y" > /dev/null 2>&1
     fi
 }
 
 # --- MONITORING LOOP ---
-echo -e "\n${B_Green}[+] Sistem Auto-Monitor Aktif Berjalan...${NC}"
+echo -e "\n${B_Green}[+] Sistem Pemantau Multi-Window Aktif...${NC}"
 echo -e "${B_Cyan}---------------------------------------${NC}"
 
 while true; do
     for idx in "${!TARGET_PACKAGES[@]}"; do
         CURRENT_PKG="${TARGET_PACKAGES[$idx]}"
         
-        # Cek apakah aplikasi sedang aktif berjalan
+        # Cek status aplikasi
         IS_RUNNING=$(tsudo pidof $CURRENT_PKG)
         
         if [ -z "$IS_RUNNING" ]; then
             rejoin_and_align "$CURRENT_PKG" "$idx"
-            sleep 15 
+            sleep 10 
         fi
     done
     sleep 10
