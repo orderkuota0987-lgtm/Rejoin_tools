@@ -59,16 +59,35 @@ rejoin_and_align() {
     local END_X=$(( POS_X + WIDTH ))
     local END_Y=$(( POS_Y + HEIGHT ))
 
-    echo -e "[$(date +%T)] ${B_Yellow}LAUNCHING${NC} - $PKG di X:$POS_X"
+    echo -e "[$(date +%T)] ${B_Yellow}LAUNCHING${NC} - $PKG..."
     
     su -c "am force-stop $PKG"
     sleep 1
 
     [[ "$IS_PRIVATE" == "true" ]] && D_LINK="roblox://placeId=$GAME_ID&linkCode=$CODE" || D_LINK="roblox://placeId=$GAME_ID"
 
-    # PERINTAH SAKTI BIAR MUNCUL (Windowing Mode 5)
-    su -c "am start -n $PKG/com.roblox.client.MainActivity -a android.intent.action.VIEW -d '$D_LINK' --windowingMode 5 --task-bounds $POS_X,$POS_Y,$END_X,$END_Y" > /dev/null 2>&1
+    # LANGKAH 1: Buka Fullscreen dulu biar PASTI MUNCUL
+    su -c "am start -a android.intent.action.VIEW -d '$D_LINK' $PKG" > /dev/null 2>&1
+    
+    # Tunggu 5 detik sampai aplikasi benar-benar nongol di layar
     sleep 5
+
+    # LANGKAH 2: Cari ID Jendela (Task ID)
+    local TASK_ID=$(su -c "dumpsys activity activities | grep -B 1 $PKG | grep 'TaskRecord' | head -n 1 | grep -oP ' #\K[0-9]+'")
+    
+    if [ -z "$TASK_ID" ]; then
+        TASK_ID=$(su -c "am stack list | grep $PKG | grep -oP 'taskId=\K[0-9]+' | head -n 1")
+    fi
+
+    # LANGKAH 3: Paksa jadi melayang dan geser ke posisi X
+    if [ ! -z "$TASK_ID" ]; then
+        echo -e "[$(date +%T)] ${B_Green}FIXING WINDOW${NC} - Task ID: $TASK_ID ke X:$POS_X"
+        su -c "am stack move-task $TASK_ID 5 true" > /dev/null 2>&1
+        su -c "am resize-task $TASK_ID $POS_X $POS_Y $END_X $END_Y" > /dev/null 2>&1
+    else
+        echo -e "${B_Red}[!] Gagal resize, mencoba paksa ulang...${NC}"
+        su -c "am start -n $PKG/com.roblox.client.MainActivity --windowingMode 5 --task-bounds $POS_X,$POS_Y,$END_X,$END_Y" > /dev/null 2>&1
+    fi
 }
 
 while true; do
