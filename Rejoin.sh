@@ -9,7 +9,7 @@ NC='\033[0m'
 
 clear
 echo -e "${B_Cyan}=======================================${NC}"
-echo -e "${B_Green}    ROBLOX LANDSCAPE AUTO-REJOIN V4    ${NC}"
+echo -e "${B_Green}    ROBLOX AUTO-REJOIN (FIX LINK) V5   ${NC}"
 echo -e "${B_Cyan}=======================================${NC}"
 
 # --- SCAN APLIKASI ---
@@ -20,28 +20,22 @@ if [ ${#ALL_PACKAGES[@]} -eq 0 ]; then
     exit 1
 fi
 
-echo -e "Ditemukan ${#ALL_PACKAGES[@]} aplikasi."
-read -p "Masukkan Link Private Server: " PRIV_LINK
+read -p "Masukkan Link Private Server (Kosongkan jika mau pakai Game ID): " PRIV_LINK
 
-# --- EKSTRAK DATA LINK (FIX PRIVATE SERVER) ---
-GAME_ID=$(echo "$PRIV_LINK" | grep -oP 'games/\K[0-9]+')
-CODE=$(echo "$PRIV_LINK" | grep -oP 'privateServerLinkCode=\K[a-zA-Z0-9_-]+')
-
-if [ -z "$CODE" ]; then
+# --- LOGIK LINK BARU (LANGSUNG TEMBAK) ---
+if [[ -z "$PRIV_LINK" ]]; then
+    read -p "Masukkan Game ID: " GAME_ID
     D_LINK="roblox://placeId=$GAME_ID"
-    echo -e "${B_Yellow}[!] Mode: Server Publik${NC}"
 else
-    D_LINK="roblox://placeId=$GAME_ID&linkCode=$CODE"
-    echo -e "${B_Green}[+] Mode: Private Server Terdeteksi!${NC}"
+    # Gunakan link HTTPS utuh format terbaru Roblox
+    D_LINK="$PRIV_LINK"
+    echo -e "${B_Green}[+] Menggunakan Link Private Server!${NC}"
 fi
 
-# --- PAKSA LANDSCAPE (COMMAND KOMPLIT) ---
-echo -e "${B_Yellow}[*] Mengunci Orientasi Landscape...${NC}"
+# --- PAKSA LANDSCAPE ---
 su -c "settings put system accelerometer_rotation 0"
 su -c "settings put system user_rotation 1"
-su -c "wm set-user-rotation lock 1"
 
-# --- SETTING WINDOW ---
 WIDTH=550
 HEIGHT=340
 POS_Y=80
@@ -53,24 +47,20 @@ rejoin() {
     local END_X=$(( POS_X + WIDTH ))
     local END_Y=$(( POS_Y + HEIGHT ))
 
-    echo -e "[$(date +%T)] ${B_Cyan}MEMBUKA:${NC} $PKG (Window $((INDEX+1)))"
-    
-    # Matikan aplikasi (Wajib agar link private server fresh)
+    echo -e "\n[$(date +%T)] ${B_Cyan}MEMBUKA:${NC} $PKG"
     su -c "am force-stop $PKG"
     sleep 1
 
-    # JALANKAN DENGAN WINDOWING MODE 5 (FREEFORM)
-    # Gunakan tanda kutip ganda pada D_LINK agar karakter '&' tidak mematikan script
-    su -c "am start -n \"$PKG/com.roblox.client.MainActivity\" -a android.intent.action.VIEW -d \"$D_LINK\" --windowingMode 5 --task-bounds \"$POS_X,$POS_Y,$END_X,$END_Y\"" > /dev/null 2>&1
+    # Tampilkan log asli sistem Android agar kita bisa lihat jika ada error
+    echo -e "${B_Yellow}[*] Memproses link...${NC}"
+    su -c "am start -n $PKG/com.roblox.client.MainActivity -a android.intent.action.VIEW -d '$D_LINK' --windowingMode 5 --task-bounds $POS_X,$POS_Y,$END_X,$END_Y"
     
-    # Tunggu 12 detik antar akun (Biar RAM UgPhone nggak kaget)
     echo -e "[*] Menunggu loading..."
-    sleep 12
+    sleep 10
 }
 
-# --- JALANKAN LOOP ---
 for idx in "${!ALL_PACKAGES[@]}"; do
     rejoin "${ALL_PACKAGES[$idx]}" "$idx"
 done
 
-echo -e "${B_Green}--- SEMUA SELESAI ---${NC}"
+echo -e "\n${B_Green}--- SEMUA SELESAI ---${NC}"
