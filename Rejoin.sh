@@ -9,7 +9,7 @@ NC='\033[0m'
 
 clear
 echo -e "${B_Cyan}=======================================${NC}"
-echo -e "${B_Green}     ROBLOX MULTI-AUTOMATION PRO       ${NC}"
+echo -e "${B_Green}   ROBLOX MULTI-AUTOMATION LANDSCAPE   ${NC}"
 echo -e "${B_Cyan}=======================================${NC}"
 
 # --- AUTO DETECT SEMUA PACKAGE ---
@@ -51,28 +51,33 @@ else
     IS_PRIVATE=true
 fi
 
-# --- UKURAN STANDAR WINDOW ---
-WIDTH=340
-HEIGHT=700
-POS_Y=80
+# --- UKURAN JENDELA MODE LANDSCAPE ---
+WIDTH=500    # Ukuran lebar dibuat lebih besar agar proporsi landscape
+HEIGHT=360   # Tinggi diperkecil
+POS_Y=50     # Jarak dari atas layar
 
 # --- FUNGSI UTAMA REJOIN DAN STRUKTUR POSITIONING ---
 rejoin_and_align() {
     local PKG=$1
     local INDEX=$2
     
-    # HITUNG KOORDINAT OTOMATIS BERDASARKAN URUTAN ALFABET/INDEX APK
-    # Akun 1 paling kiri (0), Akun 2 bergeser ke kanan (360), dst.
-    local POS_X=$(( INDEX * 360 ))
+    # KUNCI LAYAR KE LANDSCAPE (Memaksa sistem Android masuk mode horizontal)
+    # user_rotation 1 = Landscape standar (90 derajat miring)
+    tsudo wm set-user-rotation 1
+    sleep 0.5
+    
+    # HITUNG KOORDINAT OTOMATIS BERBARIS MENYAMPING DI MODE LANDSCAPE
+    # Setiap jendela bergeser ke kanan sebesar 520 pixel (Width + Jeda 20px)
+    local POS_X=$(( INDEX * 520 ))
     local END_X=$(( POS_X + WIDTH ))
     local END_Y=$(( POS_Y + HEIGHT ))
 
-    echo -e "[$(date +%T)] ${B_Red}OFFLINE${NC} - Menjalankan $PKG di posisi X:$POS_X"
+    echo -e "[$(date +%T)] ${B_Red}OFFLINE${NC} - Menjalankan $PKG di posisi X:$POS_X (Locked Landscape)"
     
     tsudo am force-stop $PKG
     sleep 1
 
-    # PERBAIKAN BUG: Menggunakan cara aman Android 10 untuk memanggil Activity utama dahulu, baru menyuntikkan argument link
+    # Memanggil Activity utama dalam format horizontal/landscape
     if [ "$IS_PRIVATE" = true ]; then
         tsudo am start -n "$PKG/com.roblox.client.MainActivity" \
             -a android.intent.action.VIEW \
@@ -96,12 +101,12 @@ while true; do
     for idx in "${!TARGET_PACKAGES[@]}"; do
         CURRENT_PKG="${TARGET_PACKAGES[$idx]}"
         
-        # Cek apakah aplikasi sedang aktif berjalan di background/foreground
+        # Cek apakah aplikasi sedang aktif berjalan
         IS_RUNNING=$(tsudo pidof $CURRENT_PKG)
         
         if [ -z "$IS_RUNNING" ]; then
             rejoin_and_align "$CURRENT_PKG" "$idx"
-            sleep 15 # Jeda antar pembukaan apk agar RAM cloud phone tidak kaget
+            sleep 15 
         fi
     done
     sleep 10
